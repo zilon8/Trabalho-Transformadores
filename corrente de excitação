@@ -1,0 +1,137 @@
+using Plots
+
+# --- Parâmetros do circuito ---
+f_hertz_variavel = 10 .^ range(2, 7, length=100)
+f_hertz_constante = 60
+
+tensao_Vo_variavel = sqrt(2) .* range(127, 765000, length=200)
+tensao_Vo_constante = 13200
+
+# Permeabilidades relativas
+u_ferro = 4500
+u_aco_silicioso = 7000
+u_ferrite = 15000
+
+# Saturações aproximadas
+B_sat_ferro = 1.6
+B_sat_aco = 1.5
+B_sat_ferrite = 0.5
+
+# Características do núcleo
+area = 0.1
+comprimento_nucleo = 1
+numero_espiras = 2500
+
+# Constante de permeabilidade magnética do vácuo
+μ0 = 4 * π * 10^(-7)
+
+# Relutâncias absolutas
+relutancia_ferro = comprimento_nucleo / (μ0 * u_ferro * area)
+relutancia_aco = comprimento_nucleo / (μ0 * u_aco_silicioso * area)
+relutancia_ferrite = comprimento_nucleo / (μ0 * u_ferrite * area)
+
+# Frequência angular
+w_variavel = 2π .* f_hertz_variavel
+w_constante = 2π * f_hertz_constante
+
+# Resistividade e geometria do fio
+p_cobre = 1.68*10^(-8)
+condutividade_cobre = 1 / p_cobre
+secao_transversal = 5*10^(-6)
+lado = sqrt(area)
+perimetro = 4 * lado
+comprimento_total = perimetro * numero_espiras
+
+resistencia_f_baixa = (p_cobre * comprimento_total) / secao_transversal
+profundidade_penetracao = sqrt.((2 * p_cobre) ./ (w_variavel .* 1.0))
+resistencia_espira = 1 ./(condutividade_cobre .* profundidade_penetracao .* lado)
+
+# --- Função para simular saturação magnética ---
+function B_saturado(B_estimado, B_sat)
+    return B_sat * tanh.(B_estimado / B_sat)
+end
+
+# --- Cálculo com frequência variável ---
+B_estimado_f = tensao_Vo_constante ./ (w_variavel .* area .* numero_espiras)
+B_f_ferro = B_saturado(B_estimado_f, B_sat_ferro)
+B_f_aco = B_saturado(B_estimado_f, B_sat_aco)
+B_f_ferrite = B_saturado(B_estimado_f, B_sat_ferrite)
+
+fluxo_f_ferro = B_f_ferro .* area
+fluxo_f_aco = B_f_aco .* area
+fluxo_f_ferrite = B_f_ferrite .* area
+
+I_magnetizacao_f_ferro = (fluxo_f_ferro .* relutancia_ferro) ./ numero_espiras
+I_magnetizacao_f_aco = (fluxo_f_aco .* relutancia_aco) ./ numero_espiras
+I_magnetizacao_f_ferrite = (fluxo_f_ferrite .* relutancia_ferrite) ./ numero_espiras
+
+I_perdas_f = tensao_Vo_constante ./ resistencia_espira
+
+I_excitacao_f_ferro = sqrt.(I_perdas_f.^2 .+ I_magnetizacao_f_ferro.^2)
+I_excitacao_f_aco = sqrt.(I_perdas_f.^2 .+ I_magnetizacao_f_aco.^2)
+I_excitacao_f_ferrite = sqrt.(I_perdas_f.^2 .+ I_magnetizacao_f_ferrite.^2)
+
+# --- Cálculo com tensão variável para cada material ---
+B_vo_ferro = B_saturado(tensao_Vo_variavel ./ (w_constante .* area .* numero_espiras), B_sat_ferro)
+B_vo_aco = B_saturado(tensao_Vo_variavel ./ (w_constante .* area .* numero_espiras), B_sat_aco)
+B_vo_ferrite = B_saturado(tensao_Vo_variavel ./ (w_constante .* area .* numero_espiras), B_sat_ferrite)
+
+fluxo_vo_ferro = B_vo_ferro .* area
+fluxo_vo_aco = B_vo_aco .* area
+fluxo_vo_ferrite = B_vo_ferrite .* area
+
+I_magnetizacao_vo_ferro = (fluxo_vo_ferro .* relutancia_ferro) ./ numero_espiras
+I_magnetizacao_vo_aco = (fluxo_vo_aco .* relutancia_aco) ./ numero_espiras
+I_magnetizacao_vo_ferrite = (fluxo_vo_ferrite .* relutancia_ferrite) ./ numero_espiras
+
+I_perdas_vo = tensao_Vo_variavel ./ resistencia_f_baixa
+
+I_excitacao_vo_ferro = sqrt.(I_perdas_vo.^2 .+ I_magnetizacao_vo_ferro.^2)
+I_excitacao_vo_aco = sqrt.(I_perdas_vo.^2 .+ I_magnetizacao_vo_aco.^2)
+I_excitacao_vo_ferrite = sqrt.(I_perdas_vo.^2 .+ I_magnetizacao_vo_ferrite.^2)
+
+# --- Gráfico 1: Excitação vs Frequência ---
+g1 = plot(f_hertz_variavel, I_excitacao_f_ferro, label="Ferro (Total)",
+    xscale=:log10, yscale=:log10,
+    xlabel="Frequência (Hz)", ylabel="Corrente (A)", title="Excitação vs Frequência")
+plot!(g1, f_hertz_variavel, I_excitacao_f_aco, label="Aço Silicioso (Total)")
+plot!(g1, f_hertz_variavel, I_excitacao_f_ferrite, label="Ferrite (Total)")
+
+# Salvar gráfico 1
+savefig(g1, "grafico_excitacao_vs_frequencia.png")
+
+# --- Gráfico 2: Excitação vs Tensão ---
+g2 = plot(tensao_Vo_variavel, I_excitacao_vo_ferro, label="Ferro (Total)",
+    xscale=:log10, yscale=:log10,
+    xlabel="Tensão (V)", ylabel="Corrente (A)", title="Excitação vs Tensão")
+plot!(g2, tensao_Vo_variavel, I_excitacao_vo_aco, label="Aço Silicioso (Total)")
+plot!(g2, tensao_Vo_variavel, I_excitacao_vo_ferrite, label="Ferrite (Total)")
+
+# Salvar gráfico 2
+savefig(g2, "grafico_excitacao_vs_tensao.png")
+
+# --- Gráfico 3: Magnetização vs Frequência ---
+g3 = plot(f_hertz_variavel, I_magnetizacao_f_ferro, label="Ferro",
+    xscale=:log10, yscale=:log10,
+    xlabel="Frequência (Hz)", ylabel="Corrente (A)", title="Magnetização vs Frequência")
+plot!(g3, f_hertz_variavel, I_magnetizacao_f_aco, label="Aço Silicioso")
+plot!(g3, f_hertz_variavel, I_magnetizacao_f_ferrite, label="Ferrite")
+
+# Salvar gráfico 3
+savefig(g3, "grafico_magnetizacao_vs_frequencia.png")
+
+
+# --- Gráfico 4: Magnetização vs Frequência ---
+g4 = plot(tensao_Vo_variavel, I_magnetizacao_vo_ferro, label="Ferro",
+    xscale=:log10, yscale=:log10,
+    xlabel="Tensão (V)", ylabel="Corrente (A)", title="Magnetização vs Tensão")
+plot!(g4, tensao_Vo_variavel, I_magnetizacao_vo_aco, label="Aço Silicioso")
+plot!(g4, tensao_Vo_variavel, I_magnetizacao_vo_ferrite, label="Ferrite")
+
+
+# Salvar gráfico 4
+savefig(g4, "grafico_magnetizacao_vs_tensao.png")
+
+
+
+
